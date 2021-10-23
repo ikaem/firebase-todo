@@ -1,26 +1,109 @@
 // functions/APIs/users.js
-// const { initializeApp } = require('firebase/app');
-const { randomUUID } = require('crypto');
+
 const {
-  // signInWithEmailAndPassword,
-  // createUserWithEmailAndPassword,
-  // getAuth,
-  getIdToken,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
 } = require('firebase/auth');
-// const {
-//   // getFirestore,
-//   getDoc,
-//   doc,
-//   addDoc,
-//   collection,
-// } = require('firebase/firestore');
 
-const { auth, db } = require('../util/admin');
+const config = require('../util/config');
 
-// const { admin, db } = require('../util/admin');
-// const config = require('../util/config');
-
+const { loginAuth, adminDb, adminStorage } = require('../util/admin');
 const { validateLoginData, validateSignupData } = require('../util/validators');
+
+// this is function to delete image from the bucket
+// i guess we want to delete the previous image store on the server
+const deleteImage = async (imageName = 'karlo') => {
+  // we are getting a default bucket now - we could specifiy a name of it
+
+  console.log({ adminStorage });
+
+  const bucket = adminStorage.bucket();
+  const path = `${imageName}`;
+
+  try {
+    await bucket.file(path).delete();
+  } catch (e) {
+    console.error(e);
+    throw e;
+  }
+};
+
+exports.uploadProfilePhoto = async (request, response) => {
+  const BusBoy = require('busboy');
+  const path = require('path');
+  // we also use os - this is some kind of node stuff
+  const os = require('os');
+  const fs = require('fs');
+
+  // we create a busboy instance
+  const busboy = new BusBoy({ headers: request.headers });
+
+  let imageFileName;
+  let imageToBeUploaded = {
+    filePath: '',
+    mimetype: '',
+  };
+
+  // now we listen for the file name, and check the type and so on
+  // we get args in the callback
+  // busboy.on('file', (fieldname, file, filename, encoding, mimetype) => {
+  //   if (mimetype !== 'image/png' && mimetype !== 'image/jpeg')
+  //     return response.status(400).json({ error: 'Wrong file type submitted' });
+
+  //   // now we get extension - we split by ., and then we get the last secion
+  //   const imageExtension = filename.split('.')[filename.split('.').length - 1];
+
+  //   // then we create file name
+  //   // note that we access user from the request, which means we have to put that auth middleware somewher
+  //   imageFileName = `${request.user.username}.${imageExtension}`;
+  //   // getting the file path - we i guess get some tempdir, merge it with the image file name  - i guess the file wil lbe saved there
+  //   // we actually create the filepath here
+  //   const filePath = path.join(os.tmpdir(), imageFileName);
+  //   // then we constructo the file
+  //   imageToBeUploaded = { filePath, mimetype };
+  //   // and then we pipe the file to the filesystem - we bascially write filedata into the file name we specified beforehand
+  //   file.pipe(fs.createWriteStream(filePath));
+  // });
+
+  // now we deletre old image from the bzcjet
+
+  await deleteImage(imageFileName);
+
+  // now we handle some finish event
+
+  // busboy.on('finish', async () => {
+  //   // we want to upload stuff here when busboy ends i guess
+  //   // we upload only the image from the filepath
+  //   // we also set the content type
+
+  //   try {
+  //     await adminStorage.bucket().upload(imageToBeUploaded.filePath, {
+  //       resumable: false,
+  //       metadata: {
+  //         metadata: {
+  //           contentType: imageToBeUploaded.mimetype,
+  //         },
+  //       },
+  //     });
+
+  //     // then we get the image url - we know what it is - probably should be stored in a constants somewhere
+  //     const imageUrl = `https://firebasestorage.googleapis.com/v0/b/${config.storageBucket}/o/${imageFileName}?alt=media`;
+
+  //     // we only update a single filed
+  //     await db.doc(`/users/${request.user.username}`).update({ imageUrl });
+
+  //     response.json({ message: 'Image uploaded successfully' });
+  //   } catch (err) {
+  //     console.error(error);
+  //     response.status(500).json({ error: error.code });
+  //   }
+  // });
+
+  // and i guess now we we just want to end someting
+  busboy.end(request.rawBody);
+
+  //
+};
 
 exports.signupUser = async (request, response) => {
   const newUser = ({
@@ -38,75 +121,42 @@ exports.signupUser = async (request, response) => {
 
   if (!valid) return response.status(400).json(errors);
 
-  const document = db.doc(`/users/${newUser.username}`);
+  const document = adminDb.doc(`/users/${newUser.username}`);
 
   try {
-    // const docRef = await getDoc(doc(db, 'users', newUser.username));
-
     const doc = await document.get();
 
-    // if (docRef.exists())
     if (doc.exists)
       return response
         .status(400)
         .json({ username: 'This username is already taken' });
 
-    // now we create the user for the login only
+    const createUserResponse = await createUserWithEmailAndPassword(
+      loginAuth,
+      newUser.email,
+      newUser.password
+    );
 
-    // console.log({ auth2 });
+    const token = await createUserResponse.user.getIdToken();
 
-    // const createUserResponse = await createUserWithEmailAndPassword(
-    //   auth,
-    //   newUser.email,
-    //   newUser.password
-    // );
+    console.log({ user: createUserResponse.user });
 
-    const createUserResponse = await auth.createUser({
+    const userCredentials = {
+      firstName: newUser.firstName,
+      lastname: newUser.lastName,
       email: newUser.email,
-      password: newUser.password,
-    });
-    console.log('resp', createUserResponse.providerData[0]);
+      phoneNumber: newUser.phoneNumber,
+      country: newUser.country,
+      username: newUser.username,
+      createdAt: new Date().toISOString(),
+      userId: createUserResponse.user.uid,
+    };
 
-    const token = await auth.createCustomToken(randomUUID());
-    const token2 = await auth.createCustomToken(createUserResponse.uid);
+    await adminDb.doc(`/users/${newUser.username}`).set(userCredentials);
 
-    // const token = await createUserResponse.providerData[0].getIdToken();
-
-    // const token = await getIdToken(createUserResponse.providerData[0]);
-
-    console.log({ token, token2 });
-
-    // const token = await getIdToken(createUserResponse.providerData);
-    // console.log('this is token', token);
-
-    // console.log('this is create user response', createUserResponse);
-
-    // const token = await createUserResponse.user.getIdToken();
-
-    console.log(createUserResponse.providerData);
-
-    auth.createCustomToken;
-
-    // // now we set user data into the database
-    // const userCredentials = {
-    //   firstName: newUser.firstName,
-    //   lastname: newUser.lastName,
-    //   email: newUser.email,
-    //   phoneNumber: newUser.phoneNumber,
-    //   country: newUser.country,
-    //   username: newUser.username,
-    //   createdAt: new Date().toISOString(),
-    //   userId: createUserResponse.user.uid,
-    // };
-
-    // const addedDocRef = await addDoc(collection(db, 'users'), userCredentials);
-
-    // console.log('this is added doc ref', addedDocRef);
-
-    // now we add user to the database
-
-    response.status(201).json({ token: 'test' });
+    response.status(201).json({ token });
   } catch (error) {
+    console.log(Object.keys(error));
     console.error('this is error', error);
 
     if (error.code === 'auth/email-already-in-use') {
@@ -132,7 +182,7 @@ exports.loginUser = async (request, response) => {
 
   try {
     const data = await signInWithEmailAndPassword(
-      auth,
+      loginAuth,
       user.email,
       user.password
     );
