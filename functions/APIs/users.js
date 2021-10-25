@@ -12,19 +12,62 @@ const { validateLoginData, validateSignupData } = require('../util/validators');
 
 // this is function to delete image from the bucket
 // i guess we want to delete the previous image store on the server
-const deleteImage = async (imageName = 'karlo') => {
+const deleteImage = async (imageName = 'karlo.jpg') => {
   // we are getting a default bucket now - we could specifiy a name of it
 
-  console.log({ adminStorage });
+  // console.log({ adminStorage });
 
   const bucket = adminStorage.bucket();
   const path = `${imageName}`;
 
   try {
-    await bucket.file(path).delete();
+    // this will search for all such files
+    const foundFiles = await bucket.file(path).exists(async (err, exists) => {
+      if (err) {
+        console.error('this is logged error:', err);
+        throw err;
+      }
+      if (!exists) return false;
+      await bucket.file(path).delete();
+      return true;
+    });
   } catch (e) {
     console.error(e);
     throw e;
+  }
+};
+
+exports.updateUserDetails = async (request, response) => {
+  // might be neeter to use colleciton than directly to access document
+  const document = adminDb.collection('users').doc(request.user.username);
+
+  try {
+    await document.update(request.body);
+  } catch (err) {
+    console.error(err);
+    response.status(500).json({
+      message: 'Cannot update the value',
+    });
+  }
+};
+
+exports.getUserDetails = async (request, response) => {
+  const userData = {};
+
+  const documentRef = adminDb.doc(`/users/${request.user.username}`);
+
+  try {
+    const document = await documentRef.get();
+
+    // SHOULD probably respond that there is no such data
+    if (!document.exists) return;
+
+    userData.userCredentials = document.data();
+
+    response.json(userData);
+  } catch (err) {
+    console.error(err);
+    response.status(500).json({ error: error.code });
   }
 };
 
@@ -46,58 +89,63 @@ exports.uploadProfilePhoto = async (request, response) => {
 
   // now we listen for the file name, and check the type and so on
   // we get args in the callback
-  // busboy.on('file', (fieldname, file, filename, encoding, mimetype) => {
-  //   if (mimetype !== 'image/png' && mimetype !== 'image/jpeg')
-  //     return response.status(400).json({ error: 'Wrong file type submitted' });
+  busboy.on('file', (fieldname, file, filename, encoding, mimetype) => {
+    if (mimetype !== 'image/png' && mimetype !== 'image/jpeg')
+      return response.status(400).json({ error: 'Wrong file type submitted' });
 
-  //   // now we get extension - we split by ., and then we get the last secion
-  //   const imageExtension = filename.split('.')[filename.split('.').length - 1];
+    // now we get extension - we split by ., and then we get the last secion
+    const imageExtension = filename.split('.')[filename.split('.').length - 1];
 
-  //   // then we create file name
-  //   // note that we access user from the request, which means we have to put that auth middleware somewher
-  //   imageFileName = `${request.user.username}.${imageExtension}`;
-  //   // getting the file path - we i guess get some tempdir, merge it with the image file name  - i guess the file wil lbe saved there
-  //   // we actually create the filepath here
-  //   const filePath = path.join(os.tmpdir(), imageFileName);
-  //   // then we constructo the file
-  //   imageToBeUploaded = { filePath, mimetype };
-  //   // and then we pipe the file to the filesystem - we bascially write filedata into the file name we specified beforehand
-  //   file.pipe(fs.createWriteStream(filePath));
-  // });
+    // then we create file name
+    // note that we access user from the request, which means we have to put that auth middleware somewher
+    imageFileName = `${request.user.username}.${imageExtension}`;
+    // getting the file path - we i guess get some tempdir, merge it with the image file name  - i guess the file wil lbe saved there
+    // we actually create the filepath here
+    const filePath = path.join(os.tmpdir(), imageFileName);
+    // then we constructo the file
+    imageToBeUploaded = { filePath, mimetype };
+    // and then we pipe the file to the filesystem - we bascially write filedata into the file name we specified beforehand
+    file.pipe(fs.createWriteStream(filePath));
+  });
 
   // now we deletre old image from the bzcjet
 
-  await deleteImage(imageFileName);
+  try {
+    await deleteImage(imageFileName);
+  } catch (err) {
+    console.error(err);
+    // throw err;
+  }
 
   // now we handle some finish event
 
-  // busboy.on('finish', async () => {
-  //   // we want to upload stuff here when busboy ends i guess
-  //   // we upload only the image from the filepath
-  //   // we also set the content type
+  busboy.on('finish', async () => {
+    // we want to upload stuff here when busboy ends i guess
+    // we upload only the image from the filepath
+    // we also set the content type
 
-  //   try {
-  //     await adminStorage.bucket().upload(imageToBeUploaded.filePath, {
-  //       resumable: false,
-  //       metadata: {
-  //         metadata: {
-  //           contentType: imageToBeUploaded.mimetype,
-  //         },
-  //       },
-  //     });
+    try {
+      await adminStorage.bucket().upload(imageToBeUploaded.filePath, {
+        resumable: false,
+        metadata: {
+          metadata: {
+            contentType: imageToBeUploaded.mimetype,
+          },
+        },
+      });
 
-  //     // then we get the image url - we know what it is - probably should be stored in a constants somewhere
-  //     const imageUrl = `https://firebasestorage.googleapis.com/v0/b/${config.storageBucket}/o/${imageFileName}?alt=media`;
+      // then we get the image url - we know what it is - probably should be stored in a constants somewhere
+      const imageUrl = `https://firebasestorage.googleapis.com/v0/b/${config.storageBucket}/o/${imageFileName}?alt=media`;
 
-  //     // we only update a single filed
-  //     await db.doc(`/users/${request.user.username}`).update({ imageUrl });
+      // we only update a single filed
+      await adminDb.doc(`/users/${request.user.username}`).update({ imageUrl });
 
-  //     response.json({ message: 'Image uploaded successfully' });
-  //   } catch (err) {
-  //     console.error(error);
-  //     response.status(500).json({ error: error.code });
-  //   }
-  // });
+      response.json({ message: 'Image uploaded successfully' });
+    } catch (err) {
+      console.error(err);
+      response.status(500).json({ error: error.code });
+    }
+  });
 
   // and i guess now we we just want to end someting
   busboy.end(request.rawBody);

@@ -33,8 +33,6 @@ module.exports = async (request, response, next) => {
     request.user.username = userData.docs[0].data().username;
     request.user.imageUrl = userData.docs[0].data().imageUrl;
 
-    console.log({ request: request.user });
-
     next();
   } catch (err) {
     console.error('Error while verifying token', err.message);

@@ -7,6 +7,7 @@ exports.getAllTodos = async (request, response) => {
     const data = await adminDb
       .collection('todos')
       .orderBy('createdAt', 'desc')
+      .where('username', '==', request.user.username)
       .get();
 
     let todos = [];
@@ -40,6 +41,7 @@ exports.postOneTodo = async (request, response) => {
     title: request.body.title,
     body: request.body.body,
     createdAt: new Date().toISOString(),
+    username: request.user.username,
   };
 
   try {

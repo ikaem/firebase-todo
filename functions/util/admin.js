@@ -2,13 +2,22 @@ const firebaseAdmin = require('firebase-admin');
 const { initializeApp } = require('firebase/app');
 const { getAuth } = require('firebase/auth');
 
-const serviceAccount = require('./fb-admin-service-key.json');
 const config = require('../util/config');
 
-const adminApp = firebaseAdmin.initializeApp({
-  credential: firebaseAdmin.credential.cert(serviceAccount),
+// probably dont need the service account
+// const serviceAccount = require('./fb-admin-service-key.json');
+// const adminApp = firebaseAdmin.initializeApp({
+// credential: firebaseAdmin.credential.cert(serviceAccount),
+// });
+
+const adminApp = firebaseAdmin.initializeApp();
+
+// const app = initializeApp(config);
+
+// const app = initializeApp(adminApp.options);
+const app = initializeApp({
+  apiKey: process.env.API_KEY,
 });
-const app = initializeApp(config);
 
 const adminAuth = firebaseAdmin.auth(adminApp);
 const adminDb = firebaseAdmin.firestore(adminApp);

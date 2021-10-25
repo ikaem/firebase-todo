@@ -1,3 +1,4 @@
+require('dotenv').config();
 const functions = require('firebase-functions');
 const app = require('express')();
 
@@ -16,16 +17,26 @@ const {
   // loginUser,
 } = require('./APIs/todos');
 
-const { loginUser, signupUser, uploadProfilePhoto } = require('./APIs/users');
+const {
+  loginUser,
+  signupUser,
+  uploadProfilePhoto,
+  getUserDetails,
+  updateUserDetails,
+} = require('./APIs/users');
+
+// we can do this as well, instead of calling it in each route
+// app.use(auth)
 
 // TODO set the route here
-app.get('/todos', getAllTodos);
-app.post('/todo', postOneTodo);
-app.post('/login', loginUser);
-app.post('/signup', signupUser);
-app.delete('/todo/:todoId', deleteTodo);
+app.get('/todos', auth, getAllTodos);
+app.post('/todo', auth, postOneTodo);
+app.post('/login', auth, loginUser);
+app.post('/signup', auth, signupUser);
+app.delete('/todo/:todoId', auth, deleteTodo);
 app.post('/user/image', auth, uploadProfilePhoto);
-// app.delete('/user/image', uploadProfilePhoto);
+app.get('/user', auth, getUserDetails);
+app.put('/user', auth, updateUserDetails);
 
 // console.log('this', loginUser);
 
